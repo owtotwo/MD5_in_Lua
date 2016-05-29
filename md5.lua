@@ -10,6 +10,8 @@
 -- it should load the whole file in memory at a time.)
 -- (But I think you will not encrypt the file which is larger than 10M in Lua frequently.)
 
+
+
 -- API : md5.string(str) and md5.file(filename)
 local md5 = {}
 
@@ -23,24 +25,6 @@ local function buffer_to_hex(buffer)
 	end
 	return ret
 end
-
---[[
-local function print_hex(str)
-	if type(str) ~= "string" then error("Wrong type " .. type(str)) end
-	for i = 1, #str - 3, 4 do
-		local tmp = string.unpack("=I4", str:sub(i, i + 3))
-		io.write(string.format("0x%08x", tmp) .. " ")
-	end
-	if (#str % 4) > 0 then 
-		local tmp = string.unpack("=I4", str:sub(-(#str % 4), -1) .. "\0\0\0")
-		print(string.format("0x%08x", tmp))
-	end
-end
-
-local function uint32_to_str(num)
-	return string.format("0x%08x", num)
-end
---]]
 
 -- some const-value tables
 
@@ -71,7 +55,9 @@ for i = 1, 64 do
 end
 --]]
 
+-- padding buffer should be greater than 64bytes and let 1 be the first bit
 local padding_buffer = "\x80" .. string.pack("I16I16I16I16", 0x0, 0, 0, 0)
+
 
 local s_table = {
 	7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
@@ -79,6 +65,7 @@ local s_table = {
 	4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,  4, 11, 16, 23,
 	6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21,  6, 10, 15, 21
 }
+
 
 local to_uint32 = function(...)
 	local ret = {}
@@ -88,23 +75,22 @@ local to_uint32 = function(...)
 	return table.unpack(ret)
 end
 
+
 local left_rotate = function(x, n)
 	return (x << n) | ((x >> (32 - n)) & ((1 << n) - 1))
 end
 
+
 local function md5_chunk_deal(md5state, chunk_index)
-	if #md5state.state ~= 16 then
-		error("Wrong sizes of arguments") 
-	end
-	local A, B, C, D, end_pos = string.unpack("=I4 =I4 =I4 =I4", md5state.state)
+
+	local A, B, C, D = table.unpack(md5state.state)
 	local a, b, c, d = A, B, C, D
-	if end_pos ~= 17 then error("Fail to unpack the states") end
 	
 	local M = table.pack(string.unpack(
 		"=I4=I4=I4=I4 =I4=I4=I4=I4" ..
 		"=I4=I4=I4=I4 =I4=I4=I4=I4", 
 		md5state.buffer:sub(chunk_index, chunk_index + 63))
-	)	
+	)
 	
 	local F, g
 	for i = 0, 63 do
@@ -127,8 +113,9 @@ local function md5_chunk_deal(md5state, chunk_index)
 		D, C, B, A = to_uint32(C, B, B + tmp, D)
 	end
 	
-	md5state.state = string.pack("I4 I4 I4 I4", to_uint32(a + A, b + B, c + C, d + D))
+	md5state.state = table.pack(to_uint32(a + A, b + B, c + C, d + D))
 end
+
 
 
 local function Encrypt(md5state)
@@ -141,31 +128,36 @@ local function Encrypt(md5state)
 	for i = 1, #md5state.buffer, 64 do
 		md5_chunk_deal(md5state, i)
 	end
-	return buffer_to_hex(md5state.state)
+	
+	return buffer_to_hex(string.pack("I4 I4 I4 I4", table.unpack(md5state.state)))
 end
 
 
+
 local function String(str)
+
 	local md5state = {
-		state = string.pack("=I4 =I4 =I4 =I4", 
-			0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476),
+		state = { 0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476 },
 		bit_count = 0, 
 		buffer = str 
 	}
+
 	return Encrypt(md5state) -- string
 end
 
 
+
 local function File(filename, mode) 
+	
 	mode = mode or "rb"
 	local file, _err = io.open(filename, mode)
 	if not file then error(_err) end
 	local md5state = {
-		state = string.pack("=I4 =I4 =I4 =I4", 
-			0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476),
+		state = { 0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476 },
 		bit_count = 0, 
 		buffer = file:read("a")
 	}
+	
 	return Encrypt(md5state) -- string
 end
 
