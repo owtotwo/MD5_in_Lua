@@ -7,6 +7,16 @@ local md5 = {}
 
 
 -- aux functions
+local function buffer_to_hex(buffer)
+	if type(buffer) ~= "string" then error("Wrong type " .. type(buffer)) end
+	local ret = ""
+	for i = 1, #buffer do
+		ret = ret .. string.format("%02x", buffer:byte(i))
+	end
+	return ret
+end
+
+--[[
 local function print_hex(str)
 	if type(str) ~= "string" then error("Wrong type " .. type(str)) end
 	for i = 1, #str - 3, 4 do
@@ -22,8 +32,10 @@ end
 local function uint32_to_str(num)
 	return string.format("0x%08x", num)
 end
+--]]
 
 -- some const-value tables
+
 local K_table = {
 	0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
 	0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
@@ -42,11 +54,16 @@ local K_table = {
 	0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1,
 	0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
 }
---[[
+
+-- Equivalent to below
+--[[ 
+local K_table = {}
 for i = 1, 64 do
 	K_table[i] = math.floor(2^32 * math.abs(math.sin(i)))
 end
 --]]
+
+local padding_buffer = "\x80" .. string.pack("I16I16I16I16", 0x0, 0, 0, 0)
 
 local s_table = {
 	7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
@@ -56,7 +73,6 @@ local s_table = {
 }
 
 local to_uint32 = function(...)
-	-- return x | ((1 << 32) - 1)
 	local ret = {}
 	for k, v in ipairs({...}) do
 		ret[k] = v & ((1 << 32) - 1)
@@ -65,16 +81,7 @@ local to_uint32 = function(...)
 end
 
 local left_rotate = function(x, n)
---[[
-	local func = function(x) return uint32_to_str(to_uint32(x)) end
-	x = to_uint32(x)
-	local tmp = (1 << (32 - n)) - 1
-	local ret = (x << n) | ((x >> (32 - n)) & (tmp))
-	print("x = " .. func(x) .. ", n = " .. (n) .. ", ret = " .. func(ret))
-	return ret
---]]
-	x = to_uint32(x)
-	return (x << n) | ((x >> (32 - n)))
+	return (x << n) | ((x >> (32 - n)) & ((1 << n) - 1))
 end
 
 local function md5_chunk_deal(state_bytestr, chunk_bytestr)
@@ -90,7 +97,7 @@ local function md5_chunk_deal(state_bytestr, chunk_bytestr)
 	
 	local F, g
 	for i = 0, 63 do
-		print("Round " .. (i + 1))
+	
 		if i < 16 then
 			F = (B & C) | ((~B) & D)
 			g = i
@@ -105,45 +112,17 @@ local function md5_chunk_deal(state_bytestr, chunk_bytestr)
 			g = (7 * i) % 16
 		else error("Out of range") end
 		
-		local tmp = D
-		D = C
-		C = B
-		print("Before deal --> " .. uint32_to_str(to_uint32(B)))
-		
-		local B_tmp = (A + F + K_table[i + 1] + M[g + 1])
-		print("Temp deal --> " .. uint32_to_str(to_uint32(B_tmp)))
-		B = B + left_rotate(B_tmp, s_table[i + 1])
-		
-		print("After deal --> " .. uint32_to_str(to_uint32(B)))
-		print(" --> A = " .. uint32_to_str(A))
-		print(" --> F = " .. uint32_to_str(F))
-		print(" --> K_table[i + 1] = " .. uint32_to_str(K_table[i + 1]))
-		print(" --> M[g + 1] = " .. uint32_to_str(M[g + 1]))
-		print(" --> s_table[i + 1] = " .. s_table[i + 1])
-		print(" --> Sum = " .. uint32_to_str(to_uint32(B)))
-		A = tmp
-		
-		-- D, C, B, A = C, B, left_rotate(), A
-		
-		A, B, C, D = to_uint32(A, B, C, D)
-		--[[
-		print("A = " .. uint32_to_str(A))
-		print("B = " .. uint32_to_str(B))
-		print("C = " .. uint32_to_str(C))
-		print("D = " .. uint32_to_str(D))
-		--]]
+		local tmp = left_rotate((A + F + K_table[i + 1] + M[g + 1]), s_table[i + 1])
+		D, C, B, A = to_uint32(C, B, B + tmp, D)
 	end
-		A, B, C, D = to_uint32(a + A, b + B, c + C, d + D)
-		print("A = " .. uint32_to_str(A))
-		print("B = " .. uint32_to_str(B))
-		print("C = " .. uint32_to_str(C))
-		print("D = " .. uint32_to_str(D))
-	return string.pack("=I4 =I4 =I4 =I4", A, B, C, D)
+	
+	return string.pack("=I4 =I4 =I4 =I4", to_uint32(a + A, b + B, c + C, d + D))
 end
+
 
 -- md5.string("a") --> 0cc175b9c0f1b6a831c399e269772661
 function md5.string(bytestr)
-	bytestr = bytestr or ""
+	bytestr = bytestr or "a"
 	local md5state = {
 		state = string.pack("=I4 =I4 =I4 =I4", 
 			0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476),
@@ -152,10 +131,28 @@ function md5.string(bytestr)
 			0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) -- 64 bytes
 	}
 	
-	result = md5_chunk_deal(md5state.state, md5state.buffer)
-	return result
+	local remain_size = #bytestr % 64
+	local padding_size = (remain_size < 56 and 56 - remain_size) or 120 - remain_size
+	
+	local len_buffer = string.pack("=I8", 8 * #bytestr) -- to be added to the buffer tail
+	md5state.buffer = bytestr .. (padding_buffer:sub(1, padding_size) .. len_buffer)
+
+	for i = 1, #md5state.buffer, 64 do
+		md5state.state = md5_chunk_deal(md5state.state, md5state.buffer:sub(i, i + 63))
+	end
+	return buffer_to_hex(md5state.state)
 end
 
-print("Over")
-print_hex(md5.string())
+function md5.file(filename, mode)
+	mode = mode or "rb"
+	local file, _err = io.open(filename, mode)
+	if not file then error(_err) end
+	local result = md5.string(file:read("a")) -- string
+	file:close()
+	return result -- string
+end
+
+-- print(buffer_to_hex(md5.string("a"))) -- 900150983cd24fb0d6963f7d28e17f72
+-- print(md5.file("data.txt"))
+
 return md5
