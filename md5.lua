@@ -1,8 +1,16 @@
 -- A MD5-Encryption Library implemented in Lua-5.3
+-- Copyright (c) 2016 sysu_AT < owtotwo@163.com >
 
--- Notice that may be it can't not support the big file (>2GB) very well. (Because
+-- Using GNU Lesser General Public License (LGPL)
+-- [ http://www.gnu.org/licenses/lgpl-3.0.en.html ] for License Text
+-- [ https://en.wikipedia.org/wiki/MD5 ] for Algorithm Detials
+
+
+-- Notice that may be it can't not support the big file (>50M) very well. (Because
 -- it should load the whole file in memory at a time.)
--- (But I think you will not encrypt the big file which is larger than 1GB in Lua)
+-- (But I think you will not encrypt the file which is larger than 10M in Lua frequently.)
+
+-- API : md5.string(str) and md5.file(filename)
 local md5 = {}
 
 
@@ -84,16 +92,19 @@ local left_rotate = function(x, n)
 	return (x << n) | ((x >> (32 - n)) & ((1 << n) - 1))
 end
 
-local function md5_chunk_deal(state_bytestr, chunk_bytestr)
-	if (#state_bytestr ~= 16) or (#chunk_bytestr ~= 64) then
+local function md5_chunk_deal(md5state, chunk_index)
+	if #md5state.state ~= 16 then
 		error("Wrong sizes of arguments") 
 	end
-	local A, B, C, D, end_pos = string.unpack("=I4 =I4 =I4 =I4", state_bytestr)
+	local A, B, C, D, end_pos = string.unpack("=I4 =I4 =I4 =I4", md5state.state)
 	local a, b, c, d = A, B, C, D
 	if end_pos ~= 17 then error("Fail to unpack the states") end
 	
-	local M = table.pack(string.unpack("=I4=I4=I4=I4 =I4=I4=I4=I4" ..
-		"=I4=I4=I4=I4 =I4=I4=I4=I4", chunk_bytestr))	
+	local M = table.pack(string.unpack(
+		"=I4=I4=I4=I4 =I4=I4=I4=I4" ..
+		"=I4=I4=I4=I4 =I4=I4=I4=I4", 
+		md5state.buffer:sub(chunk_index, chunk_index + 63))
+	)	
 	
 	local F, g
 	for i = 0, 63 do
@@ -116,43 +127,49 @@ local function md5_chunk_deal(state_bytestr, chunk_bytestr)
 		D, C, B, A = to_uint32(C, B, B + tmp, D)
 	end
 	
-	return string.pack("=I4 =I4 =I4 =I4", to_uint32(a + A, b + B, c + C, d + D))
+	md5state.state = string.pack("I4 I4 I4 I4", to_uint32(a + A, b + B, c + C, d + D))
 end
 
 
--- md5.string("a") --> 0cc175b9c0f1b6a831c399e269772661
-function md5.string(bytestr)
-	bytestr = bytestr or "a"
-	local md5state = {
-		state = string.pack("=I4 =I4 =I4 =I4", 
-			0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476),
-		bit_count = 0, 
-		buffer = string.pack("I4I4I4I4 I4I4I4I4 I4I4I4I4 I4I4I4I4",
-			0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0) -- 64 bytes
-	}
-	
-	local remain_size = #bytestr % 64
+local function Encrypt(md5state)
+	local remain_size = #md5state.buffer % 64
 	local padding_size = (remain_size < 56 and 56 - remain_size) or 120 - remain_size
 	
-	local len_buffer = string.pack("=I8", 8 * #bytestr) -- to be added to the buffer tail
-	md5state.buffer = bytestr .. (padding_buffer:sub(1, padding_size) .. len_buffer)
+	local len_buffer = string.pack("=I8", 8 * #md5state.buffer) -- to be added to the buffer tail
+	md5state.buffer = md5state.buffer .. (padding_buffer:sub(1, padding_size) .. len_buffer)
 
 	for i = 1, #md5state.buffer, 64 do
-		md5state.state = md5_chunk_deal(md5state.state, md5state.buffer:sub(i, i + 63))
+		md5_chunk_deal(md5state, i)
 	end
 	return buffer_to_hex(md5state.state)
 end
 
-function md5.file(filename, mode)
+
+local function String(str)
+	local md5state = {
+		state = string.pack("=I4 =I4 =I4 =I4", 
+			0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476),
+		bit_count = 0, 
+		buffer = str 
+	}
+	return Encrypt(md5state) -- string
+end
+
+
+local function File(filename, mode) 
 	mode = mode or "rb"
 	local file, _err = io.open(filename, mode)
 	if not file then error(_err) end
-	local result = md5.string(file:read("a")) -- string
-	file:close()
-	return result -- string
+	local md5state = {
+		state = string.pack("=I4 =I4 =I4 =I4", 
+			0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476),
+		bit_count = 0, 
+		buffer = file:read("a")
+	}
+	return Encrypt(md5state) -- string
 end
 
--- print(buffer_to_hex(md5.string("a"))) -- 900150983cd24fb0d6963f7d28e17f72
--- print(md5.file("data.txt"))
+
+md5 = { string = String, file = File }
 
 return md5
