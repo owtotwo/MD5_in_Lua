@@ -119,13 +119,14 @@ end
 
 
 local function Encrypt(md5state)
-	local remain_size = #md5state.buffer % 64
+	local buffer_size = #md5state.buffer
+	local remain_size = buffer_size % 64
 	local padding_size = (remain_size < 56 and 56 - remain_size) or 120 - remain_size
 	
-	local len_buffer = string.pack("=I8", 8 * #md5state.buffer) -- to be added to the buffer tail
+	local len_buffer = string.pack("=I8", 8 * buffer_size) -- to be added to the buffer tail
 	md5state.buffer = md5state.buffer .. (padding_buffer:sub(1, padding_size) .. len_buffer)
 
-	for i = 1, #md5state.buffer, 64 do
+	for i = 1, buffer_size, 64 do
 		md5_chunk_deal(md5state, i)
 	end
 	
