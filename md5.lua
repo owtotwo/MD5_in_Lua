@@ -18,7 +18,7 @@ local md5 = {}
 
 -- aux functions
 local function buffer_to_hex(buffer)
-	if type(buffer) ~= "string" then error("Wrong type " .. type(buffer)) end
+	assert(type(buffer) == 'string', "Wrong type")
 	local ret = ""
 	for i = 1, #buffer do
 		ret = ret .. string.format("%02x", buffer:byte(i))
@@ -151,8 +151,8 @@ end
 local function File(filename, mode) 
 	
 	mode = mode or "rb"
-	local file, _err = io.open(filename, mode)
-	if not file then error(_err) end
+	local file = assert(io.open(filename, mode))
+
 	local md5state = {
 		state = { 0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476 },
 		bit_count = 0, 
