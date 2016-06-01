@@ -18,7 +18,7 @@ local md5 = {}
 
 -- aux functions
 local function buffer_to_hex(buffer)
-	assert(type(buffer) == 'string', "Wrong type")
+	-- assert(type(buffer) == 'string', "Wrong type")
 	local ret = ""
 	for i = 1, #buffer do
 		ret = ret .. string.format("%02x", buffer:byte(i))
@@ -83,6 +83,9 @@ end
 
 local function md5_chunk_deal(md5state, chunk_index)
 
+	-- md5state.state must have four 32bits integers.
+	-- md5.buffer must be 512bits(64bytes).
+
 	local A, B, C, D = table.unpack(md5state.state)
 	local a, b, c, d = A, B, C, D
 	
@@ -132,7 +135,6 @@ local function Encrypt(md5state)
 	
 	return buffer_to_hex(string.pack("I4 I4 I4 I4", table.unpack(md5state.state)))
 end
-
 
 
 local function String(str)
