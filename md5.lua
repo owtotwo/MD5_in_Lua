@@ -7,7 +7,7 @@
 
 
 -- Notice that may be it can't not support the big file (>50M) very well. (Because
--- it should load the whole file in memory at a time.)
+-- it should loop many times.)
 -- (But I think you will not encrypt the file which is larger than 10M in Lua frequently.)
 
 
